@@ -1,0 +1,42 @@
+// Vercel Serverless Function (Node 18+)
+// Proxy aman ke Gemini Image API + CORS supaya bisa dipanggil dari GitHub Pages
+
+export default async function handler(req, res) {
+  // --- CORS ---
+  const ORIGIN = process.env.CORS_ORIGIN || "*"; // set ke https://<username>.github.io kalau mau dibatasi
+  res.setHeader("Access-Control-Allow-Origin", ORIGIN);
+  res.setHeader("Access-Control-Allow-Methods", "POST,OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  if (req.method === "OPTIONS") return res.status(200).end();
+
+  if (req.method !== "POST") {
+    return res.status(405).json({ error: "Method not allowed" });
+  }
+
+  try {
+    const API_KEY = process.env.GEMINI_API_KEY;
+    if (!API_KEY) return res.status(500).json({ error: "Missing GEMINI_API_KEY" });
+
+    const payload = req.body; // kirim persis payload dari front-end
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image-preview:generateContent?key=${API_KEY}`;
+
+    const r = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: typeof payload === "string" ? payload : JSON.stringify(payload),
+    });
+
+    const j = await r.json();
+    if (!r.ok) {
+      return res.status(r.status).json(j);
+    }
+    // (opsional) blockReason dari promptFeedback
+    if (j?.promptFeedback?.blockReason) {
+      return res.status(400).json({ error: `Blocked: ${j.promptFeedback.blockReason}`, detail: j.promptFeedback });
+    }
+
+    return res.status(200).json(j);
+  } catch (err) {
+    return res.status(500).json({ error: err?.message || "Unknown error" });
+  }
+}
